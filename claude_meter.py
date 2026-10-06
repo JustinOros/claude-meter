@@ -30,9 +30,18 @@ def ensure_deps():
     if os.path.abspath(sys.prefix) == os.path.abspath(venv):
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q"] + PACKAGES)
         return
+    linux = sys.platform.startswith("linux")
+    cfg = os.path.join(venv, "pyvenv.cfg")
+    if linux and os.path.exists(cfg):
+        with open(cfg) as f:
+            if "include-system-site-packages = true" not in f.read():
+                shutil.rmtree(venv, ignore_errors=True)
     if not os.path.exists(py):
         print("Creating environment in " + venv)
-        subprocess.check_call([sys.executable, "-m", "venv", venv])
+        args = [sys.executable, "-m", "venv", venv]
+        if linux:
+            args.insert(3, "--system-site-packages")
+        subprocess.check_call(args)
     if subprocess.call([py, "-c", f"import importlib.util as u, sys; sys.exit(0 if all(u.find_spec(m) for m in {MODULES!r}) else 1)"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) != 0:
         print("Installing " + ", ".join(PACKAGES))
         subprocess.check_call([py, "-m", "pip", "install", "-q", "--upgrade", "pip"])
@@ -42,7 +51,6 @@ def ensure_deps():
 
 ensure_deps()
 
-import pystray
 from PIL import Image, ImageDraw, ImageFont
 
 try:
@@ -146,6 +154,18 @@ def prompt_mac(msg):
         return value
 
 
+def prompt_linux(msg):
+    tools = [
+        ["zenity", "--entry", "--hide-text", "--title=ClaudeMeter", f"--text={msg}", "--width=600"],
+        ["kdialog", "--title", "ClaudeMeter", "--password", msg],
+    ]
+    for cmd in tools:
+        if shutil.which(cmd[0]):
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            return r.stdout.strip() if r.returncode == 0 else None
+    return False
+
+
 def prompt_other(msg):
     try:
         import tkinter as tk
@@ -157,9 +177,16 @@ def prompt_other(msg):
         root.destroy()
         return v
     except Exception:
+        pass
+    if sys.platform.startswith("linux"):
+        v = prompt_linux(msg)
+        if v is not False:
+            return v
+    if sys.stdin and sys.stdin.isatty():
         import getpass
         print(msg)
         return getpass.getpass("sessionKey: ")
+    return None
 
 
 def prompt_key():
@@ -316,6 +343,8 @@ def make_icon(text, color, dark=False):
 
 class Meter:
     def __init__(self):
+        global pystray
+        import pystray
         self.key = load_key()
         self.config = load_config()
         self.last = ("--", GRAY)

@@ -105,7 +105,13 @@ launchctl kickstart -k gui/$(id -u)/com.justinoros.claudemeter
 ```
 
 **Linux: no icon appears**
-Your desktop needs tray support. On GNOME install the "AppIndicator and KStatusNotifierItem Support" extension. You may also need `python3-tk` and an AppIndicator package such as `gir1.2-ayatanaappindicator3-0.1`.
+Your desktop needs tray support. On GNOME install the "AppIndicator and KStatusNotifierItem Support" extension. For the icon menu to work, install the system AppIndicator packages, for example on Debian or Ubuntu:
+
+```
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
+```
+
+The session key dialog uses tkinter, zenity or kdialog, whichever is available.
 
 ## How it works
 
