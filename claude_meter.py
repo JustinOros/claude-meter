@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -268,22 +269,56 @@ def font(size):
         return ImageFont.load_default()
 
 
-def make_icon(text, color):
+CONFIG = os.path.join(os.path.expanduser("~"), ".claude-meter", "config.json")
+
+
+def load_config():
+    try:
+        with open(CONFIG) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(cfg):
+    try:
+        os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+        with open(CONFIG, "w") as f:
+            json.dump(cfg, f)
+    except OSError:
+        pass
+
+
+def draw_text(d, text, f, fill):
+    try:
+        d.text((32, 33), text, font=f, fill=fill, anchor="mm")
+    except (ValueError, TypeError):
+        d.text((8, 20), text, font=f, fill=fill)
+
+
+def make_icon(text, color, dark=False):
+    size = 42 if len(text) <= 2 else 30
+    f = font(size)
+    if dark:
+        mask = Image.new("L", (64, 64), 0)
+        md = ImageDraw.Draw(mask)
+        md.rounded_rectangle((0, 0, 63, 63), radius=14, fill=255)
+        draw_text(md, text, f, 0)
+        img = Image.new("RGBA", (64, 64), (255, 255, 255, 0))
+        img.putalpha(mask)
+        return img
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle((0, 0, 63, 63), radius=14, fill=color)
-    size = 42 if len(text) <= 2 else 30
-    f = font(size)
-    try:
-        d.text((32, 33), text, font=f, fill="white", anchor="mm")
-    except (ValueError, TypeError):
-        d.text((8, 20), text, font=f, fill="white")
+    draw_text(d, text, f, "white")
     return img
 
 
 class Meter:
     def __init__(self):
         self.key = load_key()
+        self.config = load_config()
+        self.last = ("--", GRAY)
         self.org = None
         self.running = True
         self.wake = threading.Event()
@@ -292,7 +327,7 @@ class Meter:
         self.status_text = "Starting"
         self.icon = pystray.Icon(
             "ClaudeMeter",
-            make_icon("--", GRAY),
+            make_icon("--", GRAY, self.config.get("dark", False)),
             "Claude",
             menu=pystray.Menu(
                 pystray.MenuItem(lambda i: self.session_text, None, enabled=False),
@@ -301,6 +336,7 @@ class Meter:
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Refresh", lambda: self.wake.set()),
                 pystray.MenuItem("Open Usage Page", lambda: webbrowser.open("https://claude.ai/settings/usage")),
+                pystray.MenuItem("Dark Mode", self.toggle_dark, checked=lambda i: self.config.get("dark", False)),
                 pystray.MenuItem("Set Session Key...", lambda: threading.Thread(target=self.change_key, daemon=True).start()),
                 pystray.MenuItem("Quit", self.quit),
             ),
@@ -316,8 +352,15 @@ class Meter:
         self.org = None
         self.wake.set()
 
+    def toggle_dark(self):
+        self.config["dark"] = not self.config.get("dark", False)
+        save_config(self.config)
+        self.icon.icon = make_icon(*self.last, self.config["dark"])
+        self.icon.update_menu()
+
     def show(self, text, color, status, tooltip=None):
-        self.icon.icon = make_icon(text, color)
+        self.last = (text, color)
+        self.icon.icon = make_icon(text, color, self.config.get("dark", False))
         self.icon.title = tooltip or f"Claude: {status}"
         self.status_text = status
         self.icon.update_menu()
@@ -404,7 +447,19 @@ def install():
                 "StandardOutPath": log,
                 "StandardErrorPath": log,
             }, f)
-        subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", MAC_PLIST], check=True)
+        target = f"gui/{uid}/{LABEL}"
+        for _ in range(50):
+            if subprocess.run(["launchctl", "print", target], capture_output=True).returncode != 0:
+                break
+            time.sleep(0.1)
+        ok = False
+        for _ in range(5):
+            if subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", MAC_PLIST], capture_output=True).returncode == 0:
+                ok = True
+                break
+            time.sleep(1)
+        if not ok:
+            subprocess.run(["launchctl", "kickstart", "-k", target], check=True)
         where = MAC_PLIST
     elif os.name == "nt":
         import winreg

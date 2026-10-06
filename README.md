@@ -20,9 +20,11 @@ Click the icon to see:
 - Session (5h) percent left and time until reset
 - Weekly (7d) percent left and time until reset
 - Last update time
-- Refresh, Open Usage Page, Set Session Key, Quit
+- Refresh, Open Usage Page, Dark Mode, Set Session Key, Quit
 
 It refreshes automatically every 2 minutes.
+
+**Dark Mode** (toggle in the menu) switches the icon to plain white with the number cut out, to match other monochrome menu bar and tray icons. The setting is saved in `~/.claude-meter/config.json`.
 
 ## Requirements
 
