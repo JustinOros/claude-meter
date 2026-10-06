@@ -1,0 +1,4 @@
+pystray
+Pillow
+keyring
+curl_cffi
