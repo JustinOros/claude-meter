@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import plistlib
 import shutil
@@ -166,11 +167,29 @@ def prompt_linux(msg):
     return False
 
 
+log = logging.getLogger("claude-meter")
+
+
+def hide_dock_icon(activate=False):
+    if sys.platform != "darwin":
+        return
+    try:
+        import AppKit
+
+        app = AppKit.NSApplication.sharedApplication()
+        app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
+        if activate:
+            app.activateIgnoringOtherApps_(True)
+    except Exception:
+        log.exception("hide dock icon failed")
+
+
 def prompt_other(msg):
     try:
         import tkinter as tk
         from tkinter import simpledialog
         root = tk.Tk()
+        hide_dock_icon(True)
         root.withdraw()
         root.attributes("-topmost", True)
         v = simpledialog.askstring("ClaudeMeter", msg, show="*", parent=root)
@@ -423,6 +442,7 @@ class Meter:
         self.show(str(shown), color, f"Updated {datetime.now().strftime('%H:%M')}", f"Claude: {shown}% left")
 
     def loop(self, icon):
+        hide_dock_icon()
         icon.visible = True
         if not self.key:
             self.change_key()
@@ -532,6 +552,7 @@ def uninstall():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if "--install" in sys.argv:
         install()
         sys.exit(0)
